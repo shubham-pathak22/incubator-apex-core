@@ -102,126 +102,6 @@ public class LogicalPlanSerializer extends JsonSerializer<LogicalPlan>
   private static final Logger LOG = LoggerFactory.getLogger(LogicalPlanSerializer.class);
 
   /**
-   *
-   * @param dag
-   * @return
-   */
-  public static Map<String, Object> convertToMap(LogicalPlan dag)
-  {
-    HashMap<String, Object> result = new HashMap<String, Object>();
-    ArrayList<Object> operatorArray = new ArrayList< Object>();
-    ArrayList<Object> streamMap = new ArrayList<Object>();
-    //result.put("applicationName", appConfig.getName());
-    result.put("operators", operatorArray);
-    result.put("streams", streamMap);
-    //LogicalPlan dag = StramAppLauncher.prepareDAG(appConfig, StreamingApplication.LAUNCHMODE_YARN);
-    //
-    // should we put the DAGContext info here?
-
-    Map<String, Object> dagAttrs = new HashMap<String, Object>();
-    for (Map.Entry<Attribute<Object>, Object> e : Attribute.AttributeMap.AttributeInitializer.getAllAttributes(dag, Context.DAGContext.class).entrySet()){
-      dagAttrs.put(e.getKey().getSimpleName(), e.getValue());
-    }
-    result.put("attributes", dagAttrs);
-
-    Collection<OperatorMeta> allOperators = dag.getAllOperators();
-    ObjectMapper propertyObjectMapper = new ObjectMapper();
-    propertyObjectMapper.configure(JsonGenerator.Feature.WRITE_NUMBERS_AS_STRINGS, true);
-    propertyObjectMapper.configure(SerializationConfig.Feature.FAIL_ON_EMPTY_BEANS, false);
-
-    StdTypeResolverBuilder typer = new PropertyTypeResolverBuilder();
-    typer.init(JsonTypeInfo.Id.CLASS, null);
-    typer = typer.inclusion(JsonTypeInfo.As.PROPERTY);
-    propertyObjectMapper.setDefaultTyping(typer);
-
-    for (OperatorMeta operatorMeta : allOperators) {
-      HashMap<String, Object> operatorDetailMap = new HashMap<String, Object>();
-      ArrayList<Map<String, Object>> portList = new ArrayList<Map<String, Object>>();
-      Map<String, Object> attributeMap = new HashMap<String, Object>();
-
-      String operatorName = operatorMeta.getName();
-      operatorArray.add(operatorDetailMap);
-      operatorDetailMap.put("name", operatorName);
-      operatorDetailMap.put("ports", portList);
-      operatorDetailMap.put("class", operatorMeta.getOperator().getClass().getName());
-      operatorDetailMap.put("attributes", attributeMap);
-      Map<Attribute<Object>, Object> rawAttributes = Attribute.AttributeMap.AttributeInitializer.getAllAttributes(operatorMeta, Context.OperatorContext.class);
-      for (Map.Entry<Attribute<Object>, Object> entry : rawAttributes.entrySet()) {
-        attributeMap.put(entry.getKey().getSimpleName(), entry.getValue());
-      }
-
-      ObjectMapperString str;
-
-      try {
-        str = new ObjectMapperString(propertyObjectMapper.writeValueAsString(operatorMeta.getOperator()));
-      }
-      catch (Throwable ex) {
-        LOG.error("Got exception when trying to get properties for operator {}", operatorMeta.getName(), ex);
-        str = null;
-      }
-      operatorDetailMap.put("properties", str);
-
-      Operators.PortMappingDescriptor pmd = new Operators.PortMappingDescriptor();
-      Operators.describe(operatorMeta.getOperator(), pmd);
-      for (Map.Entry<String, PortContextPair<InputPort<?>>> entry : pmd.inputPorts.entrySet()) {
-        HashMap<String, Object> portDetailMap = new HashMap<String, Object>();
-        HashMap<String, Object> portAttributeMap = new HashMap<String, Object>();
-        InputPortMeta portMeta = operatorMeta.getMeta(entry.getValue().component);
-        String portName = portMeta.getPortName();
-        portDetailMap.put("name", portName);
-        portDetailMap.put("type", "input");
-        portDetailMap.put("attributes", portAttributeMap);
-        rawAttributes = Attribute.AttributeMap.AttributeInitializer.getAllAttributes(portMeta, Context.PortContext.class);
-        for (Map.Entry<Attribute<Object>, Object> attEntry : rawAttributes.entrySet()) {
-          portAttributeMap.put(attEntry.getKey().getSimpleName(), attEntry.getValue());
-        }
-        portList.add(portDetailMap);
-      }
-      for (Map.Entry<String, PortContextPair<OutputPort<?>>> entry : pmd.outputPorts.entrySet()) {
-        HashMap<String, Object> portDetailMap = new HashMap<String, Object>();
-        HashMap<String, Object> portAttributeMap = new HashMap<String, Object>();
-        OutputPortMeta portMeta = operatorMeta.getMeta(entry.getValue().component);
-        String portName = portMeta.getPortName();
-        portDetailMap.put("name", portName);
-        portDetailMap.put("type", "output");
-        portDetailMap.put("attributes", portAttributeMap);
-        rawAttributes = Attribute.AttributeMap.AttributeInitializer.getAllAttributes(portMeta, Context.PortContext.class);
-        for (Map.Entry<Attribute<Object>, Object> attEntry : rawAttributes.entrySet()) {
-          portAttributeMap.put(attEntry.getKey().getSimpleName(), attEntry.getValue());
-        }
-        portList.add(portDetailMap);
-      }
-    }
-    Collection<StreamMeta> allStreams = dag.getAllStreams();
-
-    for (StreamMeta streamMeta : allStreams) {
-      HashMap<String, Object> streamDetailMap = new HashMap<String, Object>();
-      String streamName = streamMeta.getName();
-      streamMap.add(streamDetailMap);
-      String sourcePortName = streamMeta.getSource().getPortName();
-      OperatorMeta operatorMeta = streamMeta.getSource().getOperatorMeta();
-      HashMap<String, Object> sourcePortDetailMap = new HashMap<String, Object>();
-      sourcePortDetailMap.put("operatorName", operatorMeta.getName());
-      sourcePortDetailMap.put("portName", sourcePortName);
-      streamDetailMap.put("name", streamName);
-      streamDetailMap.put("source", sourcePortDetailMap);
-      List<InputPortMeta> sinks = streamMeta.getSinks();
-      ArrayList<HashMap<String, Object>> sinkPortList = new ArrayList<HashMap<String, Object>>();
-      for (InputPortMeta sinkPort : sinks) {
-        HashMap<String, Object> sinkPortDetailMap = new HashMap<String, Object>();
-        sinkPortDetailMap.put("operatorName", sinkPort.getOperatorWrapper().getName());
-        sinkPortDetailMap.put("portName", sinkPort.getPortName());
-        sinkPortList.add(sinkPortDetailMap);
-      }
-      streamDetailMap.put("sinks", sinkPortList);
-      if (streamMeta.getLocality() != null) {
-        streamDetailMap.put("locality", streamMeta.getLocality().name());
-      }
-    }
-    return result;
-  }
-
-  /**
    * @param flatten
    * @param dag
    * @return
@@ -536,13 +416,14 @@ public class LogicalPlanSerializer extends JsonSerializer<LogicalPlan>
 
   public static JSONObject convertToJsonObject(LogicalPlan dag)
   {
-    return new JSONObject(convertToMap(dag));
+    return new JSONObject(convertToMap(dag, false));
   }
 
   @Override
-  public void serialize(LogicalPlan dag, JsonGenerator jg, SerializerProvider sp) throws IOException, JsonProcessingException
+  public void serialize(LogicalPlan dag, JsonGenerator jg, SerializerProvider sp) throws IOException,
+      JsonProcessingException
   {
-    jg.writeObject(convertToMap(dag));
+    jg.writeObject(convertToMap(dag, false));
   }
 
 }

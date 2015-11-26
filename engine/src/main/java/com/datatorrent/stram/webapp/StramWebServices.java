@@ -576,7 +576,7 @@ public class StramWebServices
       throw new NotFoundException();
     }
     LogicalModuleInfo logicalModuleInfo;
-    logicalModuleInfo = dagManager.getLogicalModuleInfo(moduleName, false, dagManager.getLogicalPlan());
+    logicalModuleInfo = dagManager.getLogicalModuleInfo(moduleName, false, dagManager.getLogicalPlan(), null);
     return new JSONObject(objectMapper.writeValueAsString(logicalModuleInfo));
   }
 
@@ -590,7 +590,8 @@ public class StramWebServices
       throw new NotFoundException();
     }
     LogicalModuleInfo logicalModuleInfo;
-    logicalModuleInfo = dagManager.getLogicalModuleInfo(moduleName, true, dagManager.getLogicalPlan());
+    logicalModuleInfo = dagManager.getLogicalModuleInfo(moduleName, true, dagManager.getLogicalPlan(),
+        dagManager.getAncestry(moduleName));
     return new JSONObject(objectMapper.writeValueAsString(logicalModuleInfo));
   }
 
@@ -886,17 +887,13 @@ public class StramWebServices
     @SuppressWarnings("rawtypes")
     Iterator entryIterator = moduleProperties.entryIterator();
     while (entryIterator.hasNext()) {
-      try {
-        @SuppressWarnings("unchecked")
-        Map.Entry<String, Object> entry = (Map.Entry<String, Object>)entryIterator.next();
-        if (propertyName == null) {
-          m.put(entry.getKey(), entry.getValue());
-        } else if (propertyName.equals(entry.getKey())) {
-          m.put(entry.getKey(), entry.getValue());
-          break;
-        }
-      } catch (Exception ex) {
-        LOG.warn("Caught exception", ex);
+      @SuppressWarnings("unchecked")
+      Map.Entry<String, Object> entry = (Map.Entry<String, Object>)entryIterator.next();
+      if (propertyName == null) {
+        m.put(entry.getKey(), entry.getValue());
+      } else if (propertyName.equals(entry.getKey())) {
+        m.put(entry.getKey(), entry.getValue());
+        break;
       }
     }
     return new JSONObject(objectMapper.writeValueAsString(m));

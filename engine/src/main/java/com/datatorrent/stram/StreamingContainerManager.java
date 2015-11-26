@@ -2306,18 +2306,21 @@ public class StreamingContainerManager implements PlanContext
     return fillLogicalOperatorInfo(operatorMeta);
   }
 
-  public LogicalModuleInfo getLogicalModuleInfo(String moduleName, boolean flatten, LogicalPlan dag)
+  public LogicalModuleInfo getLogicalModuleInfo(String moduleName, boolean flatten, LogicalPlan dag, String ancestry)
   {
     ModuleMeta moduleMeta = getModuleMeta(moduleName);
     if (moduleMeta == null) {
       return null;
     }
-    LogicalModuleInfo logicalModuleInfo = fillLogicalModuleInfo(moduleMeta, flatten);
+    LogicalModuleInfo logicalModuleInfo = fillLogicalModuleInfo(moduleMeta, flatten, ancestry);
     if (flatten) {
       for (ModuleMeta meta : moduleMeta.getDag().getAllModules()) {
         if (meta.getParentModuleName() != null && meta.getParentModuleName().equals(moduleName)) {
-          logicalModuleInfo.modules.add(getLogicalModuleInfo(fillLogicalModuleInfo(meta, flatten).name, flatten,
-              moduleMeta.getDag()));
+          String ancestor = ancestry == null ? meta.getParentModuleName() + "_" + meta.getName()
+              : ancestry + "_" + meta.getName();
+          logicalModuleInfo.modules.add(getLogicalModuleInfo(
+              fillLogicalModuleInfo(meta, flatten, ancestor).name, flatten, moduleMeta.getDag(),
+              ancestor));
         }
       }
     }
@@ -2342,6 +2345,25 @@ public class StreamingContainerManager implements PlanContext
     }
     return null;
   }
+  
+  public String getAncestry(String moduleName)
+  {
+    return getAncestry(moduleName, getLogicalPlan(), null);
+  }
+
+  private String getAncestry(String moduleName, LogicalPlan dag, String ancestry)
+  {
+    ModuleMeta logicalModule = dag.getModuleMeta(moduleName);
+    if (logicalModule != null) {
+      return ancestry == null ? null : ancestry + "_" + logicalModule.getName();
+    } else {
+      for (ModuleMeta m : dag.getAllModules()) {
+        String ancestor = ancestry == null ? m.getName() : ancestry + "_" + m.getName();
+        return getAncestry(moduleName, m.getDag(), ancestor);
+      }
+    }
+    return null;
+  }
 
   public List<LogicalOperatorInfo> getLogicalOperatorInfoList()
   {
@@ -2359,9 +2381,9 @@ public class StreamingContainerManager implements PlanContext
     Collection<ModuleMeta> allModules = getLogicalPlan().getAllModules();
     for (ModuleMeta moduleMeta : allModules) {
       if (!flatten) {
-        infoList.add(fillLogicalModuleInfo(moduleMeta, flatten));
+        infoList.add(fillLogicalModuleInfo(moduleMeta, flatten, null));
       } else {
-        infoList.add(getLogicalModuleInfo(moduleMeta.getName(), true, getLogicalPlan()));
+        infoList.add(getLogicalModuleInfo(moduleMeta.getName(), flatten, getLogicalPlan(), null));
       }
     }
     return infoList;
@@ -2516,7 +2538,7 @@ public class StreamingContainerManager implements PlanContext
     return loi;
   }
 
-  private LogicalModuleInfo fillLogicalModuleInfo(ModuleMeta module, boolean flatten)
+  private LogicalModuleInfo fillLogicalModuleInfo(ModuleMeta module, boolean flatten, String parentModuleName)
   {
     LogicalModuleInfo lmi = new LogicalModuleInfo();
     lmi.name = module.getName();
@@ -2525,7 +2547,7 @@ public class StreamingContainerManager implements PlanContext
       for (OperatorMeta operatorMeta : getLogicalPlan().getAllOperators()) {
         if (operatorMeta.getModuleName() != null
             && (operatorMeta.getModuleName().equals(module.getName()) || operatorMeta.getModuleName().equals(
-                module.getParentModuleName() + "_" + module.getName()))) {
+                parentModuleName))) {
           lmi.operators.add(fillLogicalOperatorInfo(operatorMeta));
         }
       }
