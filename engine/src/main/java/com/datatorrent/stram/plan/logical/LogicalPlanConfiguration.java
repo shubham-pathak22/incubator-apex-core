@@ -69,6 +69,8 @@ import com.datatorrent.api.Context.DAGContext;
 import com.datatorrent.api.Context.OperatorContext;
 import com.datatorrent.api.Context.PortContext;
 import com.datatorrent.api.DAG;
+import com.datatorrent.api.DagNode;
+import com.datatorrent.api.Module;
 import com.datatorrent.api.Operator;
 import com.datatorrent.api.StreamingApplication;
 import com.datatorrent.api.StringCodec;
@@ -2091,6 +2093,7 @@ public class LogicalPlanConfiguration
     return dag;
   }
 
+
   /**
    * Populate the logical plan structure from properties.
    * @param dag
@@ -2111,22 +2114,22 @@ public class LogicalPlanConfiguration
 
     Map<String, OperatorConf> operators = appConf.getChildren(StramElement.OPERATOR);
 
-    Map<OperatorConf, Operator> nodeMap = Maps.newHashMapWithExpectedSize(operators.size());
+    Map<OperatorConf, DagNode> nodeMap = Maps.newHashMapWithExpectedSize(operators.size());
     // add all operators first
     for (Map.Entry<String, OperatorConf> nodeConfEntry : operators.entrySet()) {
       OperatorConf nodeConf = nodeConfEntry.getValue();
       if (!WILDCARD.equals(nodeConf.id)) {
-        Class<? extends Operator> nodeClass = StramUtils.classForName(nodeConf.getClassNameReqd(), Operator.class);
+        Class<? extends DagNode> nodeClass = StramUtils.classForName(nodeConf.getClassNameReqd(), DagNode.class);
         String optJson = nodeConf.getProperties().get(nodeClass.getName());
-        Operator nd = null;
+        DagNode nd = null;
         try {
           if (optJson != null) {
             // if there is a special key which is the class name, it means the operator is serialized in json format
             ObjectMapper mapper = ObjectMapperFactory.getOperatorValueDeserializer();
             nd = mapper.readValue("{\"" + nodeClass.getName() + "\":" + optJson + "}", nodeClass);
-            dag.addOperator(nodeConfEntry.getKey(), nd);
+            addNode(dag, nodeConfEntry.getKey(), nd);
           } else {
-            nd = dag.addOperator(nodeConfEntry.getKey(), nodeClass);
+            nd = addNode(dag, nodeConfEntry.getKey(), nodeClass);
           }
           setOperatorProperties(nd, nodeConf.getProperties());
         } catch (IOException e) {
@@ -2157,7 +2160,7 @@ public class LogicalPlanConfiguration
             portName = e.getKey();
           }
         }
-        Operator sourceDecl = nodeMap.get(streamConf.sourceNode);
+        DagNode sourceDecl = nodeMap.get(streamConf.sourceNode);
         Operators.PortMappingDescriptor sourcePortMap = new Operators.PortMappingDescriptor();
         Operators.describe(sourceDecl, sourcePortMap);
         sd.setSource(sourcePortMap.outputPorts.get(portName).component);
@@ -2174,7 +2177,7 @@ public class LogicalPlanConfiguration
             portName = e.getKey();
           }
         }
-        Operator targetDecl = nodeMap.get(targetNode);
+        DagNode targetDecl = nodeMap.get(targetNode);
         Operators.PortMappingDescriptor targetPortMap = new Operators.PortMappingDescriptor();
         Operators.describe(targetDecl, targetPortMap);
         sd.addSink(targetPortMap.inputPorts.get(portName).component);
@@ -2185,6 +2188,27 @@ public class LogicalPlanConfiguration
       }
     }
 
+  }
+
+  private DagNode addNode(LogicalPlan dag, String name, DagNode nd)
+  {
+    if (nd instanceof Module) {
+      dag.addModule(name, (Module)nd);
+    } else if (nd instanceof Operator) {
+      dag.addOperator(name, (Operator)nd);
+    }
+    return nd;
+  }
+
+
+  private DagNode addNode(LogicalPlan dag, String name, Class<?> clazz)
+  {
+    if (Module.class.isAssignableFrom(clazz)) {
+      return dag.addModule(name, (Class<Module>)clazz);
+    } else if (Operator.class.isAssignableFrom(clazz)) {
+      return dag.addOperator(name, (Class<Operator>)clazz);
+    }
+    return null;
   }
 
   /**
@@ -2321,14 +2345,9 @@ public class LogicalPlanConfiguration
     }
   }
 
-  private PropertyArgs getPropertyArgs(OperatorMeta om)
+  private PropertyArgs getPropertyArgs(LogicalPlan.DagNodeMeta om)
   {
-    return new PropertyArgs(om.getName(), om.getOperator().getClass().getName());
-  }
-
-  private PropertyArgs getPropertyArgs(ModuleMeta mm)
-  {
-    return new PropertyArgs(mm.getName(), mm.getModule().getClass().getName());
+    return new PropertyArgs(om.getName(), om.getNode().getClass().getName());
   }
 
   /**
@@ -2361,7 +2380,7 @@ public class LogicalPlanConfiguration
    * @param properties
    * @return Operator
    */
-  public static Operator setOperatorProperties(Operator operator, Map<String, String> properties)
+  public static DagNode setOperatorProperties(DagNode operator, Map<String, String> properties)
   {
     try {
       // populate custom opProps
@@ -2502,7 +2521,7 @@ public class LogicalPlanConfiguration
     for (final ModuleMeta mw : dag.getAllModules()) {
       List<OperatorConf> opConfs = getMatchingChildConf(appConfs, mw.getName(), StramElement.OPERATOR);
       Map<String, String> opProps = getProperties(getPropertyArgs(mw), opConfs, appName);
-      setObjectProperties(mw.getModule(), opProps);
+      setObjectProperties(mw.getNode(), opProps);
     }
   }
 
