@@ -68,6 +68,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
+import com.datatorrent.api.Module;
 import com.datatorrent.api.Operator;
 import com.datatorrent.stram.util.ObjectMapperFactory;
 import com.datatorrent.stram.webapp.TypeDiscoverer.UI_TYPE;
@@ -526,6 +527,7 @@ public class OperatorDiscoverer
         response.put(PORT_TYPE_INFO_KEY, portTypeInfo);
         response.put("inputPorts", inputPorts);
         response.put("outputPorts", outputPorts);
+        response.put("isModule", Module.class.isAssignableFrom(classLoader.loadClass(clazz)));
 
         OperatorClassInfo oci = classInfo.get(clazz);
 
